@@ -1,0 +1,194 @@
+---
+title: "Machine Learning Cumulative Performance Score (MLcps)"
+author: "Akshay and Ali"
+date: "2/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE,message = FALSE)
+```
+
+## Load Packages
+
+```{r}
+library(radarchart)
+library(scales)
+library(stringr)
+library(ggridges)
+library("ggalt")
+library(ggpubr)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library("extrafont")
+loadfonts()
+```
+
+## Calculate Polygon Area
+```{r}
+getArea<-function(metrics_score,name,title)
+{
+  metrics_score_tbl <- metrics_score%>% as_tibble()
+  metrics_score_tbl
+  # vertices of the polygon (labels of the radar graph)
+  metrics_score<-paste0(metrics_score_tbl$metrics_score)
+  #checking the names
+  metrics_score
+  
+  # PLOT THE CHART
+  c <- grDevices::col2rgb(c("green", "grey","red", "pink"))           #format RGB values in a matrix format
+  chartJSRadar(scores=metrics_score_tbl[,5],
+               labs=metrics_score,
+               maxScale = 100,
+               labelSize=12,
+               addDots=TRUE,
+               height=8,
+               width=8,
+               showToolTipLabel=TRUE,
+               polyAlpha=0.3,
+               colMatrix= c,
+               scaleStepWidth=20,                             #Spacing between rings on radar
+               scaleStartValue=0
+  )
+  
+  # Function to calculate the Area
+  babooneh <- function(vec)
+  {
+    sinAngles <- sin(360/length(vec)*pi/180)             # Calculate sine once as radar angles are equal
+    vec <- c(vec,vec[1])                                 # Append the 1st value at the end of the vector
+    
+    # NESTED RECURSIVE FUNCTION
+    vecPairSum <- function(vec,i=1,rVec=c())
+    {
+      if(!is.na(vec[i+1]))                                # If there is a next vector element (vec[i] is not the last)
+      {
+        vecPairSum(vec,i+1,c(rVec,(vec[i] * vec[i+1])))   # Call self with this score x next score as return vector rVec
+      }
+      else
+      {
+        return(rVec)                                      # no more elements, return the return vector rVec
+      }
+    }    
+    distanceVec <- vecPairSum(vec)                      # initial call to vecPairSum with the scores vector
+    return(sum(distanceVec * sinAngles)/2)              # sum every score distance and angle delta sin and divide by 2
+  }
+  
+  #check the column names
+  colnames(metrics_score_tbl)
+  Area_36_algorithms <-  apply(metrics_score_tbl[2:37],2,babooneh)
+
+  #create a dataframe
+  Area_36_algorithms <- as.data.frame(Area_36_algorithms)
+  
+
+  #add first column name as "ML_ResamplingAlgorithms"
+  Area_36_algorithms <- Area_36_algorithms%>%
+    rownames_to_column(var="ML_ResamplingAlgorithms")%>% as_tibble()
+  
+  
+  
+  class(Area_36_algorithms)
+  colnames(Area_36_algorithms)[2] <- "Area"
+  Area_36_algorithms
+  #create column 'ML_Resampling' and make it equal to 'ML_ResamplingAlgorithms' (duplicate).
+  Area_36_algorithms$ML_Resampling = Area_36_algorithms$ML_ResamplingAlgorithms
+  #Split column at delimiter in data frame [duplicate]
+  Area_36_algorithms <- separate(data = Area_36_algorithms, col = ML_Resampling, into = c("ML", "Resampling"), sep = "\\.")
+  colnames(Area_36_algorithms)
+  
+ 
+  
+  #sort based on areas
+  Area_36_algorithms <- Area_36_algorithms %>%
+    arrange(Area) #Arrange rows by Area values
+  
+  #write it in a file
+  write.csv(Area_36_algorithms,paste(name,"_area.csv",sep=""), row.names = FALSE)
+
+  #generate area plot
+  plot=ggdotchart(Area_36_algorithms, x = "ML", y = "Area",
+             color = "Resampling",                                # Color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"), # Custom color palette
+             sorting = "descending",                       # Sort value in descending order
+             rotate = TRUE,                                # Rotate vertically
+             dot.size = 6,                                 # Large dot size
+             ggtheme = theme_pubr()                        # ggplot2 theme
+
+  )+theme_cleveland() +ggtitle(title) +
+    scale_y_continuous(breaks=c(10000, 15000, 18000, 20000,22000,25000))
+
+  #pdf(name,width = 15)
+  print(plot)
+  #dev.off()
+  
+}
+```
+
+## BPS vs control
+```{r}
+#setwd
+mainDir=getwd()
+dir=paste(mainDir,"/pain_control_fs",sep="")
+setwd(dir)
+
+#read performance scores
+metrics_score<-read.csv('result_whole.csv', header = FALSE, sep=",")
+
+metrics_score<-as.data.frame(t(read.csv('result_whole.csv', header = FALSE, sep=",")))
+colnames(metrics_score) <- metrics_score[1,]
+colnames(metrics_score)[1] <- 'metrics_score'
+metrics_score <- metrics_score[-1,]
+
+names(metrics_score) <- gsub(x = colnames(metrics_score), pattern = "\\-", replacement = ".")
+
+metrics_score[2:length(metrics_score)] <- lapply(metrics_score[,2:length(metrics_score)], function(x) if(is.character(x)) as.numeric(x) else x)
+
+getArea(metrics_score,"bps_cont_dot.pdf","Combinatorial Scoring  \n BPS vs Control")
+```
+
+## DO vs control
+```{r}
+#setwd
+mainDir=getwd()
+dir=paste(mainDir,"/do_control_fs",sep="")
+setwd(dir)
+
+#read performance scores
+metrics_score<-read.csv('result_whole.csv', header = FALSE, sep=",")
+
+metrics_score<-as.data.frame(t(read.csv('result_whole.csv', header = FALSE, sep=",")))
+colnames(metrics_score) <- metrics_score[1,]
+colnames(metrics_score)[1] <- 'metrics_score'
+metrics_score <- metrics_score[-1,]
+
+names(metrics_score) <- gsub(x = colnames(metrics_score), pattern = "\\-", replacement = ".")
+
+metrics_score[2:length(metrics_score)] <- lapply(metrics_score[,2:length(metrics_score)], function(x) if(is.character(x)) as.numeric(x) else x)
+
+getArea(metrics_score,"do_cont_dot.pdf","Combinatorial Scoring  \n DO vs Control")
+```
+
+## BPS vs DO
+```{r}
+#setwd
+mainDir=getwd()
+dir=paste(mainDir,"/bps_do_fs",sep="")
+setwd(dir)
+
+#read performance scores
+metrics_score<-read.csv('result_whole.csv', header = FALSE, sep=",")
+
+metrics_score<-as.data.frame(t(read.csv('result_whole.csv', header = FALSE, sep=",")))
+colnames(metrics_score) <- metrics_score[1,]
+colnames(metrics_score)[1] <- 'metrics_score'
+metrics_score <- metrics_score[-1,]
+
+names(metrics_score) <- gsub(x = colnames(metrics_score), pattern = "\\-", replacement = ".")
+
+metrics_score[2:length(metrics_score)] <- lapply(metrics_score[,2:length(metrics_score)], function(x) if(is.character(x)) as.numeric(x) else x)
+
+getArea(metrics_score,"bps_do_dot.pdf","Combinatorial Scoring  \n BPS vs DO")
+```
+
+
